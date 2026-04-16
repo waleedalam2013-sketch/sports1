@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة الهيئات الرياضية السحابي</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM (Production Versions) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- Prop-Types (Dependency for Recharts) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+    
+    <!-- Recharts (Stable Version) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.0/Recharts.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@100..900&display=swap');
+        body {
+            font-family: 'Noto Sans Arabic', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc;
+        }
+        .animate-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
+        const appId = window.__app_id || 'sports-org-manager';
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Export tools to window for React to use
+        window.FB_TOOLS = { 
+            auth, db, appId, collection, addDoc, onSnapshot, query, serverTimestamp, 
+            signInAnonymously, signInWithCustomToken, onAuthStateChanged 
+        };
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        
+        // --- Custom SVG Icons Components (Fixes Lucide forwardRef errors) ---
+        const Icon = ({ children, size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+        );
+
+        const Icons = {
+            LayoutDashboard: (p) => <Icon {...p}><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></Icon>,
+            PlusCircle: (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></Icon>,
+            Database: (p) => <Icon {...p}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></Icon>,
+            MapPin: (p) => <Icon {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></Icon>,
+            Users: (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>,
+            TrendingUp: (p) => <Icon {...p}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></Icon>,
+            Building2: (p) => <Icon {...p}><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></Icon>,
+            CheckCircle2: (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></Icon>,
+            XCircle: (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></Icon>,
+            PieChart: (p) => <Icon {...p}><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></Icon>,
+            BarChart: (p) => <Icon {...p}><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></Icon>,
+            Share2: (p) => <Icon {...p}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></Icon>,
+            Lock: (p) => <Icon {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></Icon>,
+            LogOut: (p) => <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></Icon>,
+            Cloud: (p) => <Icon {...p}><path d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.3-1.7-4.2-4-4.5-.4-3.4-3.3-6-6.8-6-2.5 0-4.7 1.4-5.8 3.5-2.1.2-3.9 2-3.9 4.1 0 2.3 1.9 4.1 4.2 4.1H17.5z"/></Icon>
+        };
+
+        const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [activeTab, setActiveTab] = useState('entry');
+            const [loading, setLoading] = useState(true);
+            const [records, setRecords] = useState([]);
+            const [notification, setNotification] = useState(null);
+            const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+            const [isOnline, setIsOnline] = useState(navigator.onLine);
+            const [isCloudConnected, setIsCloudConnected] = useState(false);
+
+            useEffect(() => {
+                const handleOnline = () => setIsOnline(true);
+                const handleOffline = () => { setIsOnline(false); setIsCloudConnected(false); };
+                window.addEventListener('online', handleOnline);
+                window.addEventListener('offline', handleOffline);
+                return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
+            }, []);
+
+            useEffect(() => {
+                const checkTools = setInterval(() => {
+                    if (window.FB_TOOLS) {
+                        clearInterval(checkTools);
+                        const { auth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = window.FB_TOOLS;
+                        const initAuth = async () => {
+                            try {
+                                if (window.__initial_auth_token) await signInWithCustomToken(auth, window.__initial_auth_token);
+                                else await signInAnonymously(auth);
+                            } catch (e) { console.error("Auth failed", e); }
+                        };
+                        initAuth();
+                        onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
+                    }
+                }, 100);
+            }, []);
+
+            useEffect(() => {
+                if (!user || !window.FB_TOOLS) return;
+                const { db, appId, collection, query, onSnapshot } = window.FB_TOOLS;
+                const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'entities'));
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    setRecords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    setIsCloudConnected(true);
+                }, (err) => { 
+                    console.error("Firestore sync error:", err);
+                    setIsCloudConnected(false); 
+                });
+                return () => unsubscribe();
+            }, [user]);
+
+            const showNotification = (msg, type = 'success') => {
+                setNotification({ msg, type });
+                setTimeout(() => setNotification(null), 4000);
+            };
+
+            const copyLink = () => {
+                const el = document.createElement('textarea');
+                el.value = window.location.href;
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
+                document.body.removeChild(el);
+                showNotification("تم نسخ رابط الموقع!");
+            };
+
+            if (loading) return (
+                <div className="flex flex-col items-center justify-center min-h-screen bg-white">
+                    <Icons.Cloud size={48} className="text-blue-600 animate-bounce mb-4" />
+                    <p className="text-gray-600 font-bold">جاري الربط السحابي...</p>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen bg-slate-50 flex flex-col">
+                    <nav className="bg-white shadow-sm border-b sticky top-0 z-50">
+                        <div className="max-w-7xl mx-auto px-4 flex justify-between h-16 items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-blue-600 p-2 rounded-xl shadow-lg text-white">
+                                    <Icons.Building2 size={20} />
+                                </div>
+                                <div className="flex flex-col">
+                                    <h1 className="text-sm sm:text-lg font-black leading-tight text-slate-800">المنظومة الرياضية</h1>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className={`w-2 h-2 rounded-full ${isCloudConnected && isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                                        <span className={`text-[10px] font-bold ${isCloudConnected && isOnline ? 'text-green-600' : 'text-red-600'}`}>
+                                            {isOnline ? (isCloudConnected ? 'متصل بالسحابة' : 'جاري الربط...') : 'لا يوجد إنترنت'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setActiveTab('entry')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'entry' ? 'bg-blue-600 text-white shadow-blue-200 shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}>
+                                    <Icons.PlusCircle size={16} /> <span className="hidden xs:inline">إضافة</span>
+                                </button>
+                                <button onClick={() => setActiveTab('admin')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'admin' ? 'bg-blue-600 text-white shadow-blue-200 shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}>
+                                    <Icons.LayoutDashboard size={16} /> <span className="hidden xs:inline">التحكم</span>
+                                </button>
+                                <div className="h-6 w-px bg-slate-200 mx-1" />
+                                <button onClick={copyLink} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Icons.Share2 size={18} /></button>
+                                {isAdminAuthenticated && <button onClick={() => { setIsAdminAuthenticated(false); setActiveTab('entry'); }} className="p-2 text-red-400 hover:bg-red-50 rounded-full transition-colors"><Icons.LogOut size={18} /></button>}
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main className="flex-grow max-w-7xl mx-auto w-full px-4 py-8">
+                        {notification && (
+                            <div className={`fixed bottom-6 left-6 px-6 py-4 rounded-2xl shadow-2xl z-[100] flex items-center gap-3 border bg-white ${notification.type === 'success' ? 'border-green-100 text-green-700' : 'border-red-100 text-red-700'} animate-in`}>
+                                {notification.type === 'success' ? <Icons.CheckCircle2 className="text-green-500" /> : <Icons.XCircle className="text-red-500" />}
+                                <span className="font-bold">{notification.msg}</span>
+                            </div>
+                        )}
+
+                        {activeTab === 'entry' ? (
+                            <EntryForm user={user} isOnline={isOnline && isCloudConnected} onSuccess={() => showNotification("تم الحفظ بنجاح ✅")} />
+                        ) : (
+                            isAdminAuthenticated ? <AdminPanel records={records} /> : <AdminLogin onLogin={() => setIsAdminAuthenticated(true)} />
+                        )}
+                    </main>
+
+                    <footer className="py-6 text-center text-slate-400 text-[10px] font-bold">
+                        نظام إدارة الهيئات الرياضية سحابياً © 2024
+                    </footer>
+                </div>
+            );
+        }
+
+        function AdminLogin({ onLogin }) {
+            const [username, setUsername] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const handleLogin = (e) => { e.preventDefault(); if (username === 'waleed' && password === '5559') onLogin(); else setError('بيانات الدخول غير صحيحة'); };
+            return (
+                <div className="max-w-md mx-auto mt-10 animate-in">
+                    <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 text-center">
+                        <div className="inline-block p-4 bg-blue-50 rounded-3xl mb-6 text-blue-600"><Icons.Lock size={32} /></div>
+                        <h2 className="text-xl font-black text-slate-800 mb-6 uppercase tracking-wider">دخول المسؤول</h2>
+                        <form onSubmit={handleLogin} className="space-y-4 text-right">
+                            <input type="text" placeholder="اسم المستخدم" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" required />
+                            <input type="password" placeholder="كلمة المرور" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" required />
+                            {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
+                            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg transition-all">تسجيل الدخول</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function EntryForm({ user, isOnline, onSuccess }) {
+            const [formData, setFormData] = useState({ name: '', lat: '', lng: '', address: '', administration: '', staff_permanent: 0, staff_contract: 0, board_members: '', area_sqm: '', has_investment: false, investment_details: '', has_courts: false, halls_count: 0, remarks: '' });
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (!user || !isOnline || isSubmitting) return;
+                setIsSubmitting(true);
+                try {
+                    const { db, appId, collection, addDoc, serverTimestamp } = window.FB_TOOLS;
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entities'), { 
+                        ...formData, 
+                        userId: user.uid, 
+                        createdAt: serverTimestamp(), 
+                        staff_permanent: Number(formData.staff_permanent), 
+                        staff_contract: Number(formData.staff_contract), 
+                        area_sqm: Number(formData.area_sqm), 
+                        halls_count: Number(formData.halls_count) 
+                    });
+                    setFormData({ name: '', lat: '', lng: '', address: '', administration: '', staff_permanent: 0, staff_contract: 0, board_members: '', area_sqm: '', has_investment: false, investment_details: '', has_courts: false, halls_count: 0, remarks: '' });
+                    onSuccess();
+                } catch (e) { alert("حدث خطأ أثناء الحفظ."); } finally { setIsSubmitting(false); }
+            };
+
+            const handleChange = (e) => { const { name, value, type, checked } = e.target; setFormData(p => ({ ...p, [name]: type === 'checkbox' ? checked : value })); };
+            
+            return (
+                <div className="max-w-4xl mx-auto bg-white rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden animate-in">
+                    <div className="bg-slate-900 p-8 text-white relative">
+                        <div className="relative z-10">
+                            <h2 className="text-2xl font-black mb-1">تسجيل هيئة رياضية</h2>
+                            <p className="text-slate-400 text-sm">سيتم تخزين البيانات سحابياً فور الحفظ</p>
+                        </div>
+                        <Icons.Database className="absolute -bottom-4 -left-4 text-slate-800 w-32 h-32 rotate-12 opacity-50" />
+                    </div>
+                    <form onSubmit={handleSubmit} className="p-8 space-y-8 text-right">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                            <FormField label="اسم الهيئة" name="name" value={formData.name} onChange={handleChange} required />
+                            <FormField label="الإدارة التابعة" name="administration" value={formData.administration} onChange={handleChange} required />
+                            <div className="md:col-span-2"><FormField label="العنوان التفصيلي" name="address" value={formData.address} onChange={handleChange} required /></div>
+                            <FormField label="خط العرض (Lat)" type="number" step="any" name="lat" value={formData.lat} onChange={handleChange} required />
+                            <FormField label="خط الطول (Lng)" type="number" step="any" name="lng" value={formData.lng} onChange={handleChange} required />
+                            <FormField label="موظفين (درجة)" type="number" name="staff_permanent" value={formData.staff_permanent} onChange={handleChange} />
+                            <FormField label="موظفين (عقود)" type="number" name="staff_contract" value={formData.staff_contract} onChange={handleChange} />
+                            <FormField label="المساحة (م²)" type="number" name="area_sqm" value={formData.area_sqm} onChange={handleChange} />
+                            <FormField label="عدد القاعات" type="number" name="halls_count" value={formData.halls_count} onChange={handleChange} />
+                        </div>
+                        <div className="bg-slate-50 p-6 rounded-2xl flex gap-8 border border-slate-100">
+                            <label className="flex items-center gap-3 cursor-pointer font-bold"><input type="checkbox" name="has_investment" checked={formData.has_investment} onChange={handleChange} className="w-5 h-5 accent-blue-600" /> يوجد استثمار</label>
+                            <label className="flex items-center gap-3 cursor-pointer font-bold"><input type="checkbox" name="has_courts" checked={formData.has_courts} onChange={handleChange} className="w-5 h-5 accent-blue-600" /> يوجد ملاعب</label>
+                        </div>
+                        {formData.has_investment && <textarea name="investment_details" placeholder="تفاصيل الاستثمار..." value={formData.investment_details} onChange={handleChange} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" rows="2" />}
+                        <textarea name="remarks" placeholder="ملاحظات إضافية..." value={formData.remarks} onChange={handleChange} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" rows="2" />
+                        <button disabled={isSubmitting || !isOnline} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-black py-5 rounded-2xl shadow-lg flex items-center justify-center gap-3 text-lg transition-all">
+                            {isSubmitting ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : (isOnline ? <><Icons.Cloud size={24} /> تخزين سحابي</> : <>لا يوجد اتصال</>)}
+                        </button>
+                    </form>
+                </div>
+            );
+        }
+
+        function FormField({ label, ...props }) {
+            return (
+                <div className="space-y-1">
+                    <label className="text-xs font-black text-slate-500 mr-2 uppercase tracking-widest">{label}</label>
+                    <input {...props} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none font-bold" />
+                </div>
+            );
+        }
+
+        function AdminPanel({ records }) {
+            const stats = useMemo(() => {
+                const total = records.length;
+                const withInv = records.filter(r => r.has_investment).length;
+                const totalStaff = records.reduce((a, c) => a + (Number(c.staff_permanent) || 0) + (Number(c.staff_contract) || 0), 0);
+                const totalArea = records.reduce((a, c) => a + (Number(c.area_sqm) || 0), 0);
+                const invData = [{ name: 'مستثمرة', value: withInv }, { name: 'لا يوجد', value: Math.max(0, total - withInv) }];
+                const adm = records.reduce((a, c) => { a[c.administration] = (a[c.administration] || 0) + 1; return a; }, {});
+                const barData = Object.entries(adm).map(([name, value]) => ({ name, value }));
+                return { total, withInv, totalStaff, totalArea, invData, barData };
+            }, [records]);
+
+            const { 
+                BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+                PieChart, Pie, Cell 
+            } = window.Recharts;
+
+            return (
+                <div className="space-y-10 animate-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-right">
+                        <StatCard icon={<Icons.Building2 />} label="إجمالي الهيئات" value={stats.total} theme="blue" />
+                        <StatCard icon={<Icons.Users />} label="إجمالي الموظفين" value={stats.totalStaff} theme="emerald" />
+                        <StatCard icon={<Icons.TrendingUp />} label="مشاريع استثمار" value={stats.withInv} theme="amber" />
+                        <StatCard icon={<Icons.MapPin />} label="المساحة (م²)" value={stats.totalArea.toLocaleString()} theme="indigo" />
+                    </div>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                            <h3 className="font-black mb-10 flex gap-3 text-lg text-slate-700">تحليل الاستثمار</h3>
+                            <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie data={stats.invData} innerRadius={60} outerRadius={80} paddingAngle={8} dataKey="value">
+                                            {stats.invData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                                        </Pie>
+                                        <Tooltip />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                            <h3 className="font-black mb-10 flex gap-3 text-lg text-slate-700">توزيع الإدارات</h3>
+                            <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={stats.barData}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                                        <Tooltip cursor={{fill: '#f8fafc'}} />
+                                        <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={40} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-[2rem] shadow-sm overflow-hidden border border-slate-100">
+                        <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
+                            <h3 className="font-black text-slate-700">سجل البيانات السحابي</h3>
+                            <div className="flex items-center gap-2 px-3 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" /> Live Sync
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right text-sm">
+                                <thead className="bg-slate-50 text-slate-500 uppercase">
+                                    <tr>
+                                        <th className="p-6 font-bold">اسم الهيئة</th>
+                                        <th className="p-6 font-bold text-center">الإدارة</th>
+                                        <th className="p-6 font-bold text-center">المساحة</th>
+                                        <th className="p-6 font-bold text-center">استثمار</th>
+                                        <th className="p-6 font-bold text-center">إجراء</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {records.map(r => (
+                                        <tr key={r.id} className="hover:bg-blue-50 transition-colors group">
+                                            <td className="p-6 font-black text-slate-800">{r.name}</td>
+                                            <td className="p-6 text-center text-slate-600 font-bold">{r.administration}</td>
+                                            <td className="p-6 text-center text-slate-500 font-mono">{r.area_sqm}</td>
+                                            <td className="p-6 text-center">
+                                                {r.has_investment ? <span className="text-green-600 font-bold">نعم</span> : <span className="text-slate-300">---</span>}
+                                            </td>
+                                            <td className="p-6 text-center">
+                                                <button onClick={() => alert(`ملاحظات: ${r.remarks || 'لا يوجد'}`)} className="text-blue-600 font-bold hover:underline opacity-0 group-hover:opacity-100 transition-opacity">تفاصيل</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function StatCard({ icon, label, value, theme }) {
+            const themes = { blue: "bg-blue-50 text-blue-600", emerald: "bg-emerald-50 text-emerald-600", amber: "bg-amber-50 text-amber-600", indigo: "bg-indigo-50 text-indigo-600" };
+            return (
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-6 hover:scale-[1.02] transition-transform">
+                    <div className={`p-4 rounded-2xl ${themes[theme]}`}>{icon}</div>
+                    <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">{label}</p><p className="text-2xl font-black text-slate-800 leading-none">{value}</p></div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
